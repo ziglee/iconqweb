@@ -1,6 +1,7 @@
 package iconqweb
 
 import grails.converters.JSON
+import org.joda.time.DateTime
 
 class ConcursoController {
 
@@ -94,11 +95,48 @@ class ConcursoController {
     }
 
     def listJson = {
-        def rows = Concurso.listOrderByNome()
-        render rows.collect{ row ->
+        params.max = Math.min(params.max ? params.int('max') : 10, 100)
+        def hqlParams = [:]
+        def hql = 'select c from Concurso as c where 1 = 1'
+
+        if (params.ano) {
+            DateTime dt = new DateTime(params.int('ano'), 1, 1, 0, 0, 0, 0);
+            hql += " and c.dataInscricaoInicio >= :dataInscricaoInicio"
+            hql += " and c.dataInscricaoInicio < :dataInscricaoFim"
+            hqlParams.put 'dataInscricaoInicio', dt.toDate()
+            hqlParams.put 'dataInscricaoFim', dt.plusYears(1).toDate()
+        }
+
+        if (params.estado) {
+            hql += " and c.estado.sigla = :estado"
+            hqlParams.put 'estado', params.estado
+        }
+
+        if (params.nivel) {
+            hql += " and c.nivel like :nivel"
+            hqlParams.put 'nivel', '%'+params.nivel+'%'
+        }
+
+        if (params.sort) {
+            hql += " order by ${params.sort} "
+        } else {
+            hql += " order by c.dataInscricaoInicio "
+        }
+
+        if (params.order)
+            hql += params.order
+        else
+            hql += ' desc'
+
+        def lista = Concurso.executeQuery(hql, hqlParams, params)
+        def count = Concurso.executeQuery(hql, hqlParams).size()
+
+        def listaJson = lista.collect{ row ->
             [id: row.id, vagas: row.vagas, instituicao: row.instituicao.sigla, estado: row.estado.sigla,
-                show: createLink([controller: 'concurso', action: 'showJson', id: row.id])]
-        } as JSON
+                    show: createLink([controller: 'concurso', action: 'showJson', id: row.id])]
+        }
+        def result = [erro: 0, payload: [lista: listaJson, total: count]]
+        render result as JSON
     }
 
     def format = 'yyyy-MM-dd';
@@ -109,10 +147,11 @@ class ConcursoController {
         def docJson = Documento.findAllByConcurso(obj).collect {[nome: it.nome, url:
                 createLink([controller: 'documento', action: 'download', id:it.id])]}
 
-        def result = [id: obj.id, situacao: obj.situacao.name(), dataInscricaoInicio: obj.dataInscricaoInicio.format(format),
+        def conc = [id: obj.id, situacao: obj.situacao.name(), dataInscricaoInicio: obj.dataInscricaoInicio.format(format),
                 dataInscricaoFim: obj.dataInscricaoFim.format(format), instituicao: obj.instituicao.sigla,
                 vagas: obj.vagas, remuneracaoDe: obj.remuneracaoDe, remuneracaoAte: obj.remuneracaoAte,
                 area: obj.area, nivel: obj.nivel, estado: obj.estado.sigla, documentos: docJson]
+        def result = [erro: 0, payload: conc]
         render result as JSON
     }
 }

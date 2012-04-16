@@ -19,6 +19,7 @@ class Concurso {
     static hasMany = [documentos: Documento]
 
     static constraints = {
+        detalhes nullable: true
     }
 
     String toString(){
